@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+data/
+diario/
+fuentes/
+.streamlit/secrets.toml
+*.tmp
+*.tmp.*
+*.txt
+*.csv
+asset/Informe_Roles*
+asset/Foto del Día.pdf
