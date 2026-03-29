@@ -55,6 +55,10 @@ class MonitorSGIPDF(FPDF):
         self.ln(18)
 
     def footer(self):
+        # Firma
+        firma_path = str(ASSET_DIR / "firma_pablo.png")
+        if Path(firma_path).exists():
+            self.image(firma_path, x=130, y=self.h - 50, h=40)
         self.set_y(-15)
         self.set_font("Helvetica", "I", 7)
         self.set_text_color(*GRIS)
@@ -104,6 +108,28 @@ class MonitorSGIPDF(FPDF):
         return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
+def _dibujar_semaforo(pdf, x: float, y: float, estado: str, size: float = 4):
+    """Dibuja un semáforo: triángulo verde (▲), triángulo rojo (▼), o círculo gris (●)."""
+    if estado == "verde":
+        pdf.set_fill_color(*VERDE)
+        # Triángulo apuntando arriba
+        pdf.polygon(
+            [(x, y + size), (x + size, y + size), (x + size / 2, y)],
+            style="F",
+        )
+    elif estado == "rojo":
+        pdf.set_fill_color(*ROJO)
+        # Triángulo apuntando abajo
+        pdf.polygon(
+            [(x, y), (x + size, y), (x + size / 2, y + size)],
+            style="F",
+        )
+    else:
+        # Pendiente: círculo gris
+        pdf.set_fill_color(*GRIS)
+        pdf.ellipse(x, y, size, size, style="F")
+
+
 def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> bytes:
     """
     Genera el PDF del Monitor SGI.
@@ -120,7 +146,7 @@ def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> 
     pdf.alias_nb_pages()
 
     # ═══════════════════════════════════════════════════════════════
-    # PÁGINA 1: Resumen ejecutivo + Semáforo
+    # PÁGINA 1: Formato FDM Inicio — Semáforo por pilar
     # ═══════════════════════════════════════════════════════════════
     pdf.add_page()
 
@@ -128,65 +154,149 @@ def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> 
     rojos = [i for i in indicadores.values() if i["estado"] == "rojo"]
     pendientes = [i for i in indicadores.values() if i["estado"] == "pendiente"]
 
-    # Métricas resumen
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(*TEXTO)
-    pdf.cell(0, 8, "Resumen del mes", ln=True)
+    # ── Banner verde ──
+    hoy = date.today()
+    meses_es = ["", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+    titulo_mes = f"SEGUIMIENTO DE GESTION INTEGRAL DE SUCURSALES | {meses_es[hoy.month]} {hoy.year}"
+    y_banner = pdf.get_y()
+    pdf.set_fill_color(*VERDE)
+    pdf.rect(10, y_banner, 190, 12, "F")
+    pdf.set_xy(10, y_banner + 2)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*BLANCO)
+    pdf.cell(190, 8, titulo_mes, align="C")
+    pdf.set_y(y_banner + 14)
 
+    # ── Info sucursal ──
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*TEXTO)
+    pdf.cell(95, 5, "5073 - Centro Zonal Olivos", align="L")
+    pdf.cell(95, 5, "Suc - Media", align="R")
+    pdf.ln()
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(190, 5, "5155 - Villa Ballester", align="L")
+    pdf.ln(8)
+
+    # ── Métricas resumen (3 cajas) ──
     y_start = pdf.get_y()
     box_w = 55
-    box_h = 18
+    box_h = 15
 
-    # Verde
     pdf.set_fill_color(*BG_VERDE)
     pdf.rect(10, y_start, box_w, box_h, "F")
-    pdf.set_xy(10, y_start + 2)
-    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(10, y_start + 1)
+    pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(*VERDE)
-    pdf.cell(box_w, 8, str(len(verdes)), align="C")
-    pdf.set_xy(10, y_start + 10)
-    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(box_w, 7, str(len(verdes)), align="C")
+    pdf.set_xy(10, y_start + 8)
+    pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(*TEXTO_SEC)
     pdf.cell(box_w, 5, "EN VERDE", align="C")
 
-    # Rojo
     x2 = 10 + box_w + 5
     pdf.set_fill_color(255, 240, 240)
     pdf.rect(x2, y_start, box_w, box_h, "F")
-    pdf.set_xy(x2, y_start + 2)
-    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(x2, y_start + 1)
+    pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(*ROJO)
-    pdf.cell(box_w, 8, str(len(rojos)), align="C")
-    pdf.set_xy(x2, y_start + 10)
-    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(box_w, 7, str(len(rojos)), align="C")
+    pdf.set_xy(x2, y_start + 8)
+    pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(*TEXTO_SEC)
     pdf.cell(box_w, 5, "EN ROJO", align="C")
 
-    # Pendiente
     x3 = x2 + box_w + 5
     pdf.set_fill_color(*BG_CARD)
     pdf.rect(x3, y_start, box_w, box_h, "F")
-    pdf.set_xy(x3, y_start + 2)
-    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(x3, y_start + 1)
+    pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(*GRIS)
-    pdf.cell(box_w, 8, str(len(pendientes)), align="C")
-    pdf.set_xy(x3, y_start + 10)
-    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(box_w, 7, str(len(pendientes)), align="C")
+    pdf.set_xy(x3, y_start + 8)
+    pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(*TEXTO_SEC)
     pdf.cell(box_w, 5, "PENDIENTE", align="C")
 
-    pdf.set_y(y_start + box_h + 8)
+    pdf.set_y(y_start + box_h + 6)
 
-    # Tabla de indicadores con datos
+    # ── Resultado Final ──
+    # Determinar estado general
+    if len(rojos) > len(verdes):
+        estado_gral = "rojo"
+    elif len(verdes) > 0:
+        estado_gral = "verde"
+    else:
+        estado_gral = "pendiente"
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(*TEXTO)
+    y_rf = pdf.get_y()
+    pdf.cell(50, 7, "Resultado Final")
+    _dibujar_semaforo(pdf, 62, y_rf + 1, estado_gral)
+    pdf.ln(9)
+
+    # ── Pilares en fila ──
+    pilares_orden = ["Individuos", "Empresas", "Administrativo"]
+    pilar_inds = {}
+    for ind in indicadores.values():
+        p = ind.get("pilar", "")
+        if p not in pilar_inds:
+            pilar_inds[p] = []
+        pilar_inds[p].append(ind)
+
+    y_pilares = pdf.get_y()
+    pilar_w = 60
+    for i, pilar in enumerate(pilares_orden):
+        x_pilar = 10 + i * (pilar_w + 5)
+        inds_pilar = pilar_inds.get(pilar, [])
+        verdes_p = sum(1 for ind in inds_pilar if ind["estado"] == "verde")
+        rojos_p = sum(1 for ind in inds_pilar if ind["estado"] == "rojo")
+
+        if rojos_p > verdes_p:
+            estado_pilar = "rojo"
+        elif verdes_p > 0:
+            estado_pilar = "verde"
+        else:
+            estado_pilar = "pendiente"
+
+        # Header del pilar
+        pdf.set_fill_color(*BG_VERDE)
+        pdf.rect(x_pilar, y_pilares, pilar_w, 7, "F")
+        pdf.set_xy(x_pilar, y_pilares)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*TEXTO)
+        pdf.cell(pilar_w - 8, 7, pilar)
+        _dibujar_semaforo(pdf, x_pilar + pilar_w - 7, y_pilares + 1.5, estado_pilar)
+
+        # Indicadores del pilar
+        y_ind = y_pilares + 9
+        for ind in inds_pilar:
+            pdf.set_xy(x_pilar + 2, y_ind)
+            pdf.set_font("Helvetica", "", 7)
+            pdf.set_text_color(*TEXTO)
+            label_trunc = pdf._safe_text(ind["label"][:25])
+            pdf.cell(pilar_w - 12, 5, label_trunc)
+            _dibujar_semaforo(pdf, x_pilar + pilar_w - 7, y_ind + 0.5, ind["estado"])
+            y_ind += 5.5
+
+    # Calcular el máximo Y ocupado por las columnas
+    max_inds = max(len(pilar_inds.get(p, [])) for p in pilares_orden) if pilar_inds else 0
+    pdf.set_y(y_pilares + 9 + max_inds * 5.5 + 5)
+
+    # ── Tabla detalle con ratios ──
     con_datos = [i for i in indicadores.values() if i["estado"] != "pendiente"]
     if con_datos:
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.ln(3)
+        pdf.set_draw_color(*VERDE)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(*TEXTO)
-        pdf.cell(0, 7, "Indicadores con datos", ln=True)
-        pdf.ln(2)
+        pdf.cell(0, 6, "Detalle de indicadores con datos", ln=True)
+        pdf.ln(1)
 
-        # Header tabla
-        col_widths = [55, 25, 25, 25, 20, 40]  # label, pilar, suc, banco, estado, detalle
+        col_widths = [50, 25, 25, 25, 20, 45]
         headers = ["Indicador", "Pilar", "Sucursal", "Banco", "Estado", "Detalle"]
         pdf.set_font("Helvetica", "B", 7)
         pdf.set_fill_color(*VERDE)
@@ -195,28 +305,18 @@ def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> 
             pdf.cell(col_widths[i], 6, h, border=0, fill=True, align="C")
         pdf.ln()
 
-        # Filas
         pdf.set_font("Helvetica", "", 7)
         for ind in con_datos:
             color = VERDE if ind["estado"] == "verde" else ROJO
-            # Fondo alterno
-            pdf.set_fill_color(255, 255, 255)
-
             pdf.set_text_color(*TEXTO)
-            pdf.cell(col_widths[0], 5.5, pdf._safe_text(ind["label"][:30]), border=0)
+            pdf.cell(col_widths[0], 5.5, pdf._safe_text(ind["label"][:28]), border=0)
             pdf.cell(col_widths[1], 5.5, pdf._safe_text(ind["pilar"][:12]), border=0, align="C")
-
             pdf.set_text_color(*color)
             pdf.cell(col_widths[2], 5.5, pdf._pct(ind["suc_ratio"]), border=0, align="C")
-
             pdf.set_text_color(*TEXTO_SEC)
             pdf.cell(col_widths[3], 5.5, pdf._pct(ind["banco_ratio"]), border=0, align="C")
-
             pdf.set_text_color(*color)
-            estado_txt = "VERDE" if ind["estado"] == "verde" else "ROJO"
-            pdf.cell(col_widths[4], 5.5, estado_txt, border=0, align="C")
-
-            # Detalle: num/den si hay
+            pdf.cell(col_widths[4], 5.5, "VERDE" if ind["estado"] == "verde" else "ROJO", border=0, align="C")
             detalle = ""
             if ind.get("suc_num") is not None and ind.get("suc_den") is not None:
                 detalle = f"{int(ind['suc_num'])}/{int(ind['suc_den'])}"
@@ -224,7 +324,6 @@ def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> 
             pdf.cell(col_widths[5], 5.5, detalle, border=0, align="C")
             pdf.ln()
 
-        # Línea separadora
         pdf.set_draw_color(*VERDE)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(3)
@@ -379,11 +478,5 @@ def generar_pdf(indicadores: dict, objetivos: list, prediccion: dict = None) -> 
         pdf.set_text_color(*GRIS)
         pdf.multi_cell(0, 4, "Nota: La prediccion se basa en la mejora promedio historica del ratio banco entre provisorio y cierre final. "
                        "Los valores reales pueden variar. Usar como referencia orientativa.")
-
-    # Firma
-    firma_path = str(ASSET_DIR / "firma_pablo.png")
-    if Path(firma_path).exists():
-        pdf.set_y(-30)
-        pdf.image(firma_path, x=80, h=10)
 
     return bytes(pdf.output())

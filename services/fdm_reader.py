@@ -4,6 +4,7 @@ Lee el FDM Provisorio/Final (xlsx o xlsb) y extrae los indicadores de Villa Ball
 Columnas verificadas empíricamente en el FDM Provisorio 26-03-2026.
 Los indicadores "Pendiente" retornan None en sus valores numéricos.
 """
+import re
 import pandas as pd
 import warnings
 from pathlib import Path
@@ -391,3 +392,29 @@ def encontrar_fdm_final(directorio: str = "C:/PRUEBITAS/fuentes") -> str | None:
     if not fdm:
         return None
     return str(max(fdm, key=lambda f: f.stat().st_mtime))
+
+
+def extraer_fecha_fdm(nombre: str) -> tuple[int, int] | None:
+    """
+    Extrae (mes, año) del nombre de un archivo FDM.
+    Patrones soportados:
+        '03. FDM_Provisorio_26-03.xlsb' → (3, 2026) via sufijo YY-MM
+        '11. FDM_Final.xlsb'            → (11, None) via prefijo MM.
+    Retorna None si no puede parsear.
+    """
+    # Intento 1: sufijo _YY-MM o espacio YY-MM antes de extensión
+    m = re.search(r'[_ ](\d{2})-(\d{2})\.\w+$', nombre)
+    if m:
+        yy, mm = int(m.group(1)), int(m.group(2))
+        if 1 <= mm <= 12:
+            anio = 2000 + yy
+            return (mm, anio)
+
+    # Intento 2: prefijo numérico "MM. " al inicio
+    m = re.match(r'^(\d{1,2})\.\s', nombre)
+    if m:
+        mm = int(m.group(1))
+        if 1 <= mm <= 12:
+            return (mm, None)
+
+    return None

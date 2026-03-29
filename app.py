@@ -11,14 +11,15 @@ import base64
 from pathlib import Path
 from datetime import date
 
-from services.fdm_reader import leer_todos, encontrar_fdm_provisorio, encontrar_fdm_final
+from services.fdm_reader import leer_todos, encontrar_fdm_provisorio, encontrar_fdm_final, extraer_fecha_fdm
 from services.atm_reader import leer_atms, encontrar_archivo_atms
 from services.foto_dia_reader import (
     enriquecer_con_foto_diaria,
     leer_atendidos, leer_stock_tarjetas, cruzar_con_tarjetas
 )
-from services.foto_dia_manual import guardar_foto_dia, obtener_acumulado_mes, obtener_registro_fecha, enriquecer_indicadores_con_foto
+from services.foto_dia_manual import guardar_foto_dia, obtener_acumulado_mes, obtener_registro_fecha, enriquecer_indicadores_con_foto, borrar_foto_dia
 from utils.simulador import simular, micro_objetivo_del_dia
+from utils.calendario_ar import dias_habiles_mes, dias_sin_cargar, hoy_es_habil
 from services.pdf_exporter import generar_pdf
 from services.predictor import predecir_ratio_banco
 
@@ -119,13 +120,14 @@ html, body, [class*="css"] { font-family: 'Montserrat', sans-serif; }
 .monitor-header .header-text { flex: 1; }
 .monitor-header h1 { color: white; font-size: 1.6rem; font-weight: 900; margin: 0; text-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 .monitor-header p  { color: rgba(255,255,255,0.9); font-size: 0.8rem; margin: 4px 0 0; letter-spacing: 2px; font-weight: 400; }
+.monitor-header .firma-header { height: 150px; opacity: 0.85; align-self: flex-end; }
 
 /* Firma footer */
 .firma-footer {
     text-align: center; padding: 30px 0 10px; margin-top: 40px;
     border-top: 1px solid #e0e5ec;
 }
-.firma-footer img { height: 35px; opacity: 0.6; }
+.firma-footer img { height: 175px; opacity: 0.6; }
 .firma-footer:hover img { opacity: 1; transition: opacity 0.3s; }
 
 /* Micro-objetivos */
@@ -256,6 +258,7 @@ st.markdown(f"""
         <h1>Monitor SGI · Villa Ballester</h1>
         <p>5155 · CENTRO ZONAL OLIVOS · CLASE MEDIA</p>
     </div>
+    <img src="data:image/png;base64,{FIRMA_B64}" class="firma-header" alt="@Pablocuadros19">
 </div>
 """, unsafe_allow_html=True)
 
@@ -272,10 +275,27 @@ with st.sidebar:
     stock_manual = st.file_uploader("Stock de tarjetas (.xlsx/.csv)", type=["xlsx", "xls", "csv"])
 
     if fdm_manual:
-        tmp = Path("C:/PRUEBITAS/data") / fdm_manual.name
-        tmp.write_bytes(fdm_manual.read())
-        fdm_path = str(tmp)
-        st.success(f"FDM cargado: {fdm_manual.name}")
+        # Validar fecha del FDM nuevo vs actual
+        fecha_nueva = extraer_fecha_fdm(fdm_manual.name)
+        fecha_actual = extraer_fecha_fdm(Path(fdm_path).name) if fdm_path else None
+        cargar_fdm = True
+
+        if fecha_nueva and fecha_actual:
+            mes_n, anio_n = fecha_nueva
+            mes_a, anio_a = fecha_actual
+            # Comparar si ambos tienen año
+            if anio_n and anio_a and (anio_n, mes_n) < (anio_a, mes_a):
+                st.warning(f"⚠️ Este FDM parece ser de {mes_n:02d}/{anio_n} pero el actual es de {mes_a:02d}/{anio_a}. Cargar uno anterior puede pisar datos.")
+                cargar_fdm = st.checkbox("Cargar de todas formas", key="forzar_fdm")
+            elif anio_n is None and anio_a is None and mes_n < mes_a:
+                st.warning(f"⚠️ Este FDM parece ser del mes {mes_n:02d} pero el actual es del mes {mes_a:02d}.")
+                cargar_fdm = st.checkbox("Cargar de todas formas", key="forzar_fdm")
+
+        if cargar_fdm:
+            tmp = Path("C:/PRUEBITAS/data") / fdm_manual.name
+            tmp.write_bytes(fdm_manual.read())
+            fdm_path = str(tmp)
+            st.success(f"FDM cargado: {fdm_manual.name}")
 
     if atm_manual:
         tmp = Path("C:/PRUEBITAS/data") / atm_manual.name
@@ -499,59 +519,86 @@ with tab2:
 with tab3:
     st.markdown("### Pulso diario")
 
-    # ── FORMULARIO MANUAL: Foto del Día ──
-    hoy_str = date.today().strftime("%Y-%m-%d")
-    registro_hoy = obtener_registro_fecha(hoy_str)
+    # ── PROGRESO DÍAS HÁBILES ──
+    hoy = date.today()
+    habiles_mes = dias_habiles_mes(hoy.month, hoy.year)
+    acum_check = obtener_acumulado_mes()
+    fechas_cargadas = [r["fecha"] for r in acum_check.get("registros", [])]
+    faltantes = dias_sin_cargar(hoy.month, hoy.year, fechas_cargadas)
+    # Solo mostrar faltantes hasta hoy (no futuros)
+    faltantes_pasados = [d for d in faltantes if d <= hoy]
 
-    with st.expander("📋 Cargar Foto del Día (manual)" + (" — ✅ hoy cargado" if registro_hoy else ""), expanded=not registro_hoy):
+    total_habiles = len(habiles_mes)
+    cargados = len(fechas_cargadas)
+    progreso = cargados / total_habiles if total_habiles > 0 else 0
+
+    st.progress(progreso, text=f"Foto del día: {cargados} / {total_habiles} días hábiles cargados")
+
+    if faltantes_pasados:
+        fechas_fmt = ", ".join(d.strftime("%d/%b") for d in faltantes_pasados)
+        st.warning(f"Sin cargar: {fechas_fmt}")
+    elif cargados > 0:
+        st.success("Todos los días hábiles hasta hoy están cargados")
+
+    if hoy_es_habil() and hoy.isoformat() not in fechas_cargadas:
+        st.info("📋 Hoy es día hábil y todavía no cargaste la foto")
+
+    # ── FORMULARIO MANUAL: Foto del Día ──
+    fecha_cargar = st.date_input("¿Qué día estás cargando?", value=date.today(), key="fecha_foto_dia")
+    fecha_str = fecha_cargar.strftime("%Y-%m-%d")
+    registro_fecha = obtener_registro_fecha(fecha_str)
+    es_hoy = fecha_cargar == date.today()
+    label_dia = "hoy" if es_hoy else fecha_cargar.strftime("%d/%b")
+
+    with st.expander(f"📋 Cargar Foto del Día ({label_dia})" + (f" — ✅ {label_dia} cargado" if registro_fecha else ""), expanded=not registro_fecha):
         st.caption("Copiá los números de BIP Sucursales (16:30 hs) y completá acá. Tarda 2 minutos.")
 
         with st.form("foto_dia_form", clear_on_submit=False):
             st.markdown("**OPORTUNIDADES — Scoring**")
             fc1, fc2, fc3 = st.columns(3)
             with fc1:
-                scoring_solicitados = st.number_input("Scorings solicitados", min_value=0, value=registro_hoy.get("scoring_solicitados", 0) if registro_hoy else 0, key="f_ss")
-                scoring_turnos = st.number_input("Turnos del día", min_value=0, value=registro_hoy.get("scoring_turnos", 0) if registro_hoy else 0, key="f_st")
+                scoring_solicitados = st.number_input("Scorings solicitados", min_value=0, value=registro_fecha.get("scoring_solicitados", 0) if registro_fecha else 0, key="f_ss")
+                scoring_turnos = st.number_input("Turnos del día", min_value=0, value=registro_fecha.get("scoring_turnos", 0) if registro_fecha else 0, key="f_st")
             with fc2:
-                scoring_ventas = st.number_input("Ventas", min_value=0, value=registro_hoy.get("scoring_ventas", 0) if registro_hoy else 0, key="f_sv")
-                scoring_no_ventas = st.number_input("No ventas", min_value=0, value=registro_hoy.get("scoring_no_ventas", 0) if registro_hoy else 0, key="f_snv")
+                scoring_ventas = st.number_input("Ventas", min_value=0, value=registro_fecha.get("scoring_ventas", 0) if registro_fecha else 0, key="f_sv")
+                scoring_no_ventas = st.number_input("No ventas", min_value=0, value=registro_fecha.get("scoring_no_ventas", 0) if registro_fecha else 0, key="f_snv")
             with fc3:
-                scoring_pendientes = st.number_input("Pendientes", min_value=0, value=registro_hoy.get("scoring_pendientes", 0) if registro_hoy else 0, key="f_sp")
+                scoring_pendientes = st.number_input("Pendientes", min_value=0, value=registro_fecha.get("scoring_pendientes", 0) if registro_fecha else 0, key="f_sp")
 
             st.markdown("**LLAMADOS**")
             lc1, lc2, lc3, lc4 = st.columns(4)
             with lc1:
                 st.markdown("<small style='color:#999;font-weight:700'>PROSPECTO DIGITAL</small>", unsafe_allow_html=True)
-                prospecto_ingresos = st.number_input("Ingresos", min_value=0, value=registro_hoy.get("prospecto_ingresos", 0) if registro_hoy else 0, key="f_pi")
-                prospecto_llamados = st.number_input("Llamados", min_value=0, value=registro_hoy.get("prospecto_llamados", 0) if registro_hoy else 0, key="f_pl")
-                prospecto_gestionados = st.number_input("Gestionados", min_value=0, value=registro_hoy.get("prospecto_gestionados", 0) if registro_hoy else 0, key="f_pg")
+                prospecto_ingresos = st.number_input("Ingresos", min_value=0, value=registro_fecha.get("prospecto_ingresos", 0) if registro_fecha else 0, key="f_pi")
+                prospecto_llamados = st.number_input("Llamados", min_value=0, value=registro_fecha.get("prospecto_llamados", 0) if registro_fecha else 0, key="f_pl")
+                prospecto_gestionados = st.number_input("Gestionados", min_value=0, value=registro_fecha.get("prospecto_gestionados", 0) if registro_fecha else 0, key="f_pg")
             with lc2:
                 st.markdown("<small style='color:#999;font-weight:700'>TURNO PREVIO</small>", unsafe_allow_html=True)
-                turno_ingresos = st.number_input("Ingresos", min_value=0, value=registro_hoy.get("turno_previo_ingresos", 0) if registro_hoy else 0, key="f_ti")
-                turno_llamados = st.number_input("Llamados", min_value=0, value=registro_hoy.get("turno_previo_llamados", 0) if registro_hoy else 0, key="f_tl")
-                turno_gestionados = st.number_input("Gestionados", min_value=0, value=registro_hoy.get("turno_previo_gestionados", 0) if registro_hoy else 0, key="f_tg")
+                turno_ingresos = st.number_input("Ingresos", min_value=0, value=registro_fecha.get("turno_previo_ingresos", 0) if registro_fecha else 0, key="f_ti")
+                turno_llamados = st.number_input("Llamados", min_value=0, value=registro_fecha.get("turno_previo_llamados", 0) if registro_fecha else 0, key="f_tl")
+                turno_gestionados = st.number_input("Gestionados", min_value=0, value=registro_fecha.get("turno_previo_gestionados", 0) if registro_fecha else 0, key="f_tg")
             with lc3:
                 st.markdown("<small style='color:#999;font-weight:700'>CAMPAÑAS</small>", unsafe_allow_html=True)
-                campanas_disponibles = st.number_input("Disponibles", min_value=0, value=registro_hoy.get("campanas_disponibles", 0) if registro_hoy else 0, key="f_cd")
-                campanas_llamados = st.number_input("Llamados", min_value=0, value=registro_hoy.get("campanas_llamados", 0) if registro_hoy else 0, key="f_cl")
-                campanas_gestionados = st.number_input("Gestionados", min_value=0, value=registro_hoy.get("campanas_gestionados", 0) if registro_hoy else 0, key="f_cg")
+                campanas_disponibles = st.number_input("Disponibles", min_value=0, value=registro_fecha.get("campanas_disponibles", 0) if registro_fecha else 0, key="f_cd")
+                campanas_llamados = st.number_input("Llamados", min_value=0, value=registro_fecha.get("campanas_llamados", 0) if registro_fecha else 0, key="f_cl")
+                campanas_gestionados = st.number_input("Gestionados", min_value=0, value=registro_fecha.get("campanas_gestionados", 0) if registro_fecha else 0, key="f_cg")
             with lc4:
                 st.markdown("<small style='color:#999;font-weight:700'>MIGAS</small>", unsafe_allow_html=True)
-                migas_ingresos = st.number_input("Ingresos", min_value=0, value=registro_hoy.get("migas_ingresos", 0) if registro_hoy else 0, key="f_mi")
-                migas_llamados = st.number_input("Llamados", min_value=0, value=registro_hoy.get("migas_llamados", 0) if registro_hoy else 0, key="f_ml")
+                migas_ingresos = st.number_input("Ingresos", min_value=0, value=registro_fecha.get("migas_ingresos", 0) if registro_fecha else 0, key="f_mi")
+                migas_llamados = st.number_input("Llamados", min_value=0, value=registro_fecha.get("migas_llamados", 0) if registro_fecha else 0, key="f_ml")
 
             st.markdown("**OTROS**")
             oc1, oc2 = st.columns(2)
             with oc1:
-                derivaciones_tesoreria = st.number_input("Derivaciones a Tesorería", min_value=0, value=registro_hoy.get("derivaciones_tesoreria", 0) if registro_hoy else 0, key="f_dt")
+                derivaciones_tesoreria = st.number_input("Derivaciones a Tesorería", min_value=0, value=registro_fecha.get("derivaciones_tesoreria", 0) if registro_fecha else 0, key="f_dt")
             with oc2:
-                observaciones = st.text_input("Observaciones", value=registro_hoy.get("observaciones", "") if registro_hoy else "", key="f_obs")
+                observaciones = st.text_input("Observaciones", value=registro_fecha.get("observaciones", "") if registro_fecha else "", key="f_obs")
 
             submitted = st.form_submit_button("Guardar Foto del Día", type="primary")
 
             if submitted:
                 datos = {
-                    "fecha": hoy_str,
+                    "fecha": fecha_str,
                     "scoring_solicitados": scoring_solicitados,
                     "scoring_turnos": scoring_turnos,
                     "scoring_ventas": scoring_ventas,
@@ -611,6 +658,21 @@ with tab3:
                                 "derivaciones_tesoreria"]
                 cols_exist = [c for c in cols_mostrar if c in df_dias.columns]
                 st.dataframe(df_dias[cols_exist], use_container_width=True, hide_index=True)
+
+                # Borrar un día
+                fechas_cargadas = sorted([r["fecha"] for r in acum_manual["registros"]], reverse=True)
+                col_sel, col_btn = st.columns([2, 1])
+                with col_sel:
+                    fecha_borrar = st.selectbox("Seleccionar día a borrar", fechas_cargadas, key="fecha_borrar")
+                with col_btn:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🗑️ Borrar día", type="secondary", key="btn_borrar_dia"):
+                        if borrar_foto_dia(fecha_borrar):
+                            st.cache_data.clear()
+                            st.success(f"Registro del {fecha_borrar} eliminado.")
+                            st.rerun()
+                        else:
+                            st.warning("No se encontró ese registro.")
 
     st.divider()
     st.markdown("**Micro-objetivos de hoy** (del simulador)")

@@ -136,6 +136,17 @@ def obtener_registro_fecha(fecha: str) -> dict | None:
     return next((r for r in db.get("registros", []) if r.get("fecha") == fecha), None)
 
 
+def borrar_foto_dia(fecha: str) -> bool:
+    """Borra el registro de una fecha específica. Retorna True si existía."""
+    db = _cargar_db()
+    antes = len(db["registros"])
+    db["registros"] = [r for r in db["registros"] if r.get("fecha") != fecha]
+    if len(db["registros"]) < antes:
+        _guardar_db(db)
+        return True
+    return False
+
+
 def enriquecer_indicadores_con_foto(indicadores: dict, mes: int = None, anio: int = None) -> dict:
     """
     Para indicadores "pendiente" en el FDM, completa con acumulado de fotos del día manuales.
