@@ -8,6 +8,7 @@ fuentes/
 *.tmp
 *.tmp.*
 *.txt
+!requirements.txt
 *.csv
 asset/Informe_Roles*
 asset/Foto del Día.pdf
