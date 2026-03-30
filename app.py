@@ -3,12 +3,13 @@ Monitor SGI — Villa Ballester 5155
 Tablero táctico diario para mejorar la foto del mes SGI.
 """
 import sys
-sys.path.insert(0, "C:/PRUEBITAS")
+from pathlib import Path
+BASE_DIR = Path(__file__).parent
+sys.path.insert(0, str(BASE_DIR))
 
 import streamlit as st
 import pandas as pd
 import base64
-from pathlib import Path
 from datetime import date
 
 from services.fdm_reader import leer_todos, encontrar_fdm_provisorio, encontrar_fdm_final, extraer_fecha_fdm
@@ -31,7 +32,7 @@ def _img_b64(path: str) -> str:
 
 
 # Rutas de assets
-ASSET_DIR = Path("C:/PRUEBITAS/asset")
+ASSET_DIR = BASE_DIR / "asset"
 LOGO_BP_B64 = _img_b64(str(ASSET_DIR / "logo_bp.jpg"))
 MONITOR_SGI_B64 = _img_b64(str(ASSET_DIR / "MonitorSGI.png"))
 PERRITO_B64 = _img_b64(str(ASSET_DIR / "perrito_bp.png"))
@@ -152,7 +153,7 @@ def _ejecutar_cierre_mes():
     """
     import shutil
 
-    fdm_actual = encontrar_fdm_provisorio("C:/PRUEBITAS")
+    fdm_actual = encontrar_fdm_provisorio(str(BASE_DIR))
 
     if not fdm_actual:
         st.warning("No hay FDM cargado para cerrar.")
@@ -171,11 +172,11 @@ def _ejecutar_cierre_mes():
     nombre_pdf = f"CierreSGI_{hoy.strftime('%Y-%m')}.pdf"
 
     # Guardar PDF en data/
-    pdf_path = Path("C:/PRUEBITAS/data") / nombre_pdf
+    pdf_path = Path(BASE_DIR / "data") / nombre_pdf
     pdf_path.write_bytes(pdf_cierre)
 
     # Mover FDM a fuentes/ como histórico para el predictor
-    fuentes_dir = Path("C:/PRUEBITAS/fuentes")
+    fuentes_dir = Path(BASE_DIR / "fuentes")
     fuentes_dir.mkdir(parents=True, exist_ok=True)
     fdm_dest = fuentes_dir / Path(fdm_actual).name
     if not fdm_dest.exists():
@@ -263,8 +264,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Buscar archivos
-fdm_path = encontrar_fdm_provisorio("C:/PRUEBITAS")
-atm_path = encontrar_archivo_atms("C:/PRUEBITAS")
+fdm_path = encontrar_fdm_provisorio(str(BASE_DIR))
+atm_path = encontrar_archivo_atms(str(BASE_DIR))
 
 # Sidebar: subir archivos manualmente
 with st.sidebar:
@@ -292,13 +293,13 @@ with st.sidebar:
                 cargar_fdm = st.checkbox("Cargar de todas formas", key="forzar_fdm")
 
         if cargar_fdm:
-            tmp = Path("C:/PRUEBITAS/data") / fdm_manual.name
+            tmp = Path(BASE_DIR / "data") / fdm_manual.name
             tmp.write_bytes(fdm_manual.read())
             fdm_path = str(tmp)
             st.success(f"FDM cargado: {fdm_manual.name}")
 
     if atm_manual:
-        tmp = Path("C:/PRUEBITAS/data") / atm_manual.name
+        tmp = Path(BASE_DIR / "data") / atm_manual.name
         tmp.write_bytes(atm_manual.read())
         atm_path = str(tmp)
 
@@ -695,7 +696,7 @@ with tab4:
     stock_path = None
 
     # Buscar en data/
-    data_dir = Path("C:/PRUEBITAS/data")
+    data_dir = Path(BASE_DIR / "data")
     for f in sorted(data_dir.glob("*atendidos*"), reverse=True):
         atendidos_path = str(f)
         break

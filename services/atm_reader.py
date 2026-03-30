@@ -100,8 +100,10 @@ def leer_atms(archivo: str) -> dict:
     return resultado
 
 
-def encontrar_archivo_atms(directorio: str = "C:/PRUEBITAS") -> str | None:
+def encontrar_archivo_atms(directorio: str = None) -> str | None:
     """Busca el archivo de ATMs más reciente en el directorio y en data/."""
+    if directorio is None:
+        directorio = str(Path(__file__).parent.parent)
     path = Path(directorio)
     candidatos = list(path.glob("*ATM*")) + list(path.glob("*atm*"))
     data_path = path / "data"

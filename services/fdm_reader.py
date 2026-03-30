@@ -368,8 +368,10 @@ def leer_todos(archivo: str) -> dict[str, dict]:
     return {ind_id: leer_indicador(archivo, ind_id) for ind_id in INDICADORES_MAP}
 
 
-def encontrar_fdm_provisorio(directorio: str = "C:/PRUEBITAS") -> str | None:
+def encontrar_fdm_provisorio(directorio: str = None) -> str | None:
     """Busca el FDM Provisorio más reciente en el directorio y en data/."""
+    if directorio is None:
+        directorio = str(Path(__file__).parent.parent)
     path = Path(directorio)
     candidatos = list(path.glob("*.xlsx")) + list(path.glob("*.xlsb"))
     data_path = path / "data"
@@ -384,8 +386,10 @@ def encontrar_fdm_provisorio(directorio: str = "C:/PRUEBITAS") -> str | None:
     return str(max(fdm, key=lambda f: f.stat().st_mtime))
 
 
-def encontrar_fdm_final(directorio: str = "C:/PRUEBITAS/fuentes") -> str | None:
+def encontrar_fdm_final(directorio: str = None) -> str | None:
     """Busca el FDM Final más reciente."""
+    if directorio is None:
+        directorio = str(Path(__file__).parent.parent / "fuentes")
     path = Path(directorio)
     candidatos = list(path.glob("*.xlsb")) + list(path.glob("*.xlsx"))
     fdm = [f for f in candidatos if "Final" in f.name or "FDM" in f.name.upper()]

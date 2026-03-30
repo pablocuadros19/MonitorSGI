@@ -7,8 +7,10 @@ from pathlib import Path
 from services.fdm_reader import leer_todos, encontrar_fdm_final, INDICADORES_MAP
 
 
-def _buscar_fdm_finales(directorio: str = "C:/PRUEBITAS/fuentes") -> list[str]:
+def _buscar_fdm_finales(directorio: str = None) -> list[str]:
     """Busca todos los FDM finales en el directorio."""
+    if directorio is None:
+        directorio = str(Path(__file__).parent.parent / "fuentes")
     path = Path(directorio)
     if not path.exists():
         return []
@@ -22,7 +24,7 @@ def _buscar_fdm_finales(directorio: str = "C:/PRUEBITAS/fuentes") -> list[str]:
     return [str(f) for f in fdm]
 
 
-def calcular_mejora_historica(directorio: str = "C:/PRUEBITAS/fuentes") -> dict:
+def calcular_mejora_historica(directorio: str = None) -> dict:
     """
     Lee todos los FDM finales y calcula la mejora promedio del ratio banco
     por indicador entre meses.
@@ -92,7 +94,7 @@ def calcular_mejora_historica(directorio: str = "C:/PRUEBITAS/fuentes") -> dict:
     }
 
 
-def predecir_ratio_banco(indicadores_actuales: dict, directorio: str = "C:/PRUEBITAS/fuentes") -> dict:
+def predecir_ratio_banco(indicadores_actuales: dict, directorio: str = None) -> dict:
     """
     Predice dónde va a terminar el ratio banco a fin de mes.
 

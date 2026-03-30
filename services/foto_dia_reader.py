@@ -17,8 +17,9 @@ from datetime import datetime, date
 
 warnings.filterwarnings("ignore")
 
-DIRECTORIO_DIARIO = "C:/PRUEBITAS/diario"
-CACHE_FILE = "C:/PRUEBITAS/data/acumulado_mensual.json"
+_BASE = Path(__file__).parent.parent
+DIRECTORIO_DIARIO = str(_BASE / "diario")
+CACHE_FILE = str(_BASE / "data" / "acumulado_mensual.json")
 
 
 # ─── FOTO DEL DÍA ────────────────────────────────────────────────────────────

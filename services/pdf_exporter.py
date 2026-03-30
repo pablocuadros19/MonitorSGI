@@ -7,7 +7,7 @@ from fpdf import FPDF
 from datetime import date
 from pathlib import Path
 
-ASSET_DIR = Path("C:/PRUEBITAS/asset")
+ASSET_DIR = Path(__file__).parent.parent / "asset"
 
 # Colores BP
 VERDE = (0, 166, 81)       # #00A651
