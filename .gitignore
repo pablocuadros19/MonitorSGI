@@ -3,7 +3,10 @@ __pycache__/
 .env
 data/
 diario/
-fuentes/
+fuentes/*.xlsx
+fuentes/*.xlsm
+fuentes/*.pdf
+fuentes/*.csv
 .streamlit/secrets.toml
 *.tmp
 *.tmp.*
