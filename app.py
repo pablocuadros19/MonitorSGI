@@ -293,13 +293,15 @@ with st.sidebar:
                 cargar_fdm = st.checkbox("Cargar de todas formas", key="forzar_fdm")
 
         if cargar_fdm:
-            tmp = Path(BASE_DIR / "data") / fdm_manual.name
+            tmp = BASE_DIR / "data" / fdm_manual.name
+            tmp.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_bytes(fdm_manual.read())
             fdm_path = str(tmp)
             st.success(f"FDM cargado: {fdm_manual.name}")
 
     if atm_manual:
-        tmp = Path(BASE_DIR / "data") / atm_manual.name
+        tmp = BASE_DIR / "data" / atm_manual.name
+        tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_bytes(atm_manual.read())
         atm_path = str(tmp)
 
@@ -706,12 +708,14 @@ with tab4:
 
     if atendidos_manual:
         tmp = data_dir / f"atendidos_{atendidos_manual.name}"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_bytes(atendidos_manual.read())
         atendidos_path = str(tmp)
         st.success("Listado de atendidos cargado")
 
     if stock_manual:
         tmp = data_dir / f"stock_{stock_manual.name}"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_bytes(stock_manual.read())
         stock_path = str(tmp)
         st.success("Stock de tarjetas cargado")
