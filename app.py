@@ -546,6 +546,22 @@ with tab3:
     if hoy_es_habil() and hoy.isoformat() not in fechas_cargadas:
         st.info("📋 Hoy es día hábil y todavía no cargaste la foto")
 
+    # ── CARGA POR ARCHIVO: Foto del Día ──
+    with st.expander("📎 Cargar Foto del Día desde archivo Excel"):
+        foto_archivo = st.file_uploader("Subí el Excel de la Foto del Día", type=["xlsx", "xls", "csv"], key="foto_dia_archivo")
+        if foto_archivo:
+            from services.foto_dia_reader import leer_foto_dia
+            tmp_foto = BASE_DIR / "data" / foto_archivo.name
+            tmp_foto.parent.mkdir(parents=True, exist_ok=True)
+            tmp_foto.write_bytes(foto_archivo.read())
+            resultado = leer_foto_dia(str(tmp_foto))
+            if resultado and resultado.get("raw"):
+                st.success(f"Archivo leído: {len(resultado['raw'])} filas")
+                st.dataframe(pd.DataFrame(resultado["raw"]).head(10), use_container_width=True, hide_index=True)
+                st.caption("Revisá que los datos se leyeron bien. Mañana ajustamos el mapeo si hace falta.")
+            else:
+                st.warning("No se pudo leer el archivo. Mañana con el formato real lo ajustamos.")
+
     # ── FORMULARIO MANUAL: Foto del Día ──
     fecha_cargar = st.date_input("¿Qué día estás cargando?", value=date.today(), key="fecha_foto_dia")
     fecha_str = fecha_cargar.strftime("%Y-%m-%d")
@@ -698,7 +714,8 @@ with tab4:
     stock_path = None
 
     # Buscar en data/
-    data_dir = Path(BASE_DIR / "data")
+    data_dir = BASE_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     for f in sorted(data_dir.glob("*atendidos*"), reverse=True):
         atendidos_path = str(f)
         break
