@@ -114,14 +114,22 @@ html, body, [class*="css"] { font-family: 'Montserrat', sans-serif; }
 .monitor-header {
     background: linear-gradient(90deg, #fff 0%, #00A651 25%, #00B8D4 100%);
     border-radius: 12px; padding: 14px 28px; margin-bottom: 20px;
-    display: flex; align-items: center; gap: 16px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
 .monitor-header .logo-bp { height: 70px; border-radius: 6px; }
 .monitor-header .logo-monitor { height: 150px; }
-.monitor-header .header-text { flex: 1; }
+.monitor-header .header-text { flex: 1; min-width: 120px; }
 .monitor-header h1 { color: white; font-size: 1.6rem; font-weight: 900; margin: 0; text-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 .monitor-header p  { color: rgba(255,255,255,0.9); font-size: 0.8rem; margin: 4px 0 0; letter-spacing: 2px; font-weight: 400; }
 .monitor-header .firma-header { height: 150px; opacity: 0.85; align-self: flex-end; }
+@media (max-width: 768px) {
+    .monitor-header { padding: 10px 14px; gap: 8px; }
+    .monitor-header .logo-bp { height: 36px; }
+    .monitor-header .logo-monitor { height: 50px; }
+    .monitor-header .firma-header { height: 40px; }
+    .monitor-header h1 { font-size: 1rem; }
+    .monitor-header p { font-size: 0.65rem; letter-spacing: 1px; }
+}
 
 /* Firma footer */
 .firma-footer {
