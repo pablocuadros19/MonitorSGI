@@ -18,7 +18,7 @@ from services.foto_dia_reader import (
     enriquecer_con_foto_diaria,
     leer_atendidos, leer_stock_tarjetas, cruzar_con_tarjetas
 )
-from services.foto_dia_manual import guardar_foto_dia, obtener_acumulado_mes, obtener_registro_fecha, enriquecer_indicadores_con_foto, borrar_foto_dia
+from services.foto_dia_manual import guardar_foto_dia, obtener_acumulado_mes, obtener_registro_fecha, enriquecer_indicadores_con_foto, borrar_foto_dia, leer_foto_dia_excel
 from utils.simulador import simular, micro_objetivo_del_dia
 from utils.calendario_ar import dias_habiles_mes, dias_sin_cargar, hoy_es_habil
 from services.pdf_exporter import generar_pdf
@@ -556,19 +556,20 @@ with tab3:
 
     # ── CARGA POR ARCHIVO: Foto del Día ──
     with st.expander("📎 Cargar Foto del Día desde archivo Excel"):
-        foto_archivo = st.file_uploader("Subí el Excel de la Foto del Día", type=["xlsx", "xls", "csv"], key="foto_dia_archivo")
+        foto_archivo = st.file_uploader("Subí el Excel de la Foto del Día (BIP Sucursales)", type=["xlsx"], key="foto_dia_archivo")
         if foto_archivo:
-            from services.foto_dia_reader import leer_foto_dia
-            tmp_foto = BASE_DIR / "data" / foto_archivo.name
-            tmp_foto.parent.mkdir(parents=True, exist_ok=True)
-            tmp_foto.write_bytes(foto_archivo.read())
-            resultado = leer_foto_dia(str(tmp_foto))
-            if resultado and resultado.get("raw"):
-                st.success(f"Archivo leído: {len(resultado['raw'])} filas")
-                st.dataframe(pd.DataFrame(resultado["raw"]).head(10), use_container_width=True, hide_index=True)
-                st.caption("Revisá que los datos se leyeron bien. Mañana ajustamos el mapeo si hace falta.")
+            datos_excel = leer_foto_dia_excel(foto_archivo.read())
+            if datos_excel:
+                st.success(f"Archivo leído — fecha detectada: {datos_excel['fecha']}")
+                preview = {k: v for k, v in datos_excel.items() if k not in ("fecha", "observaciones") and v != 0}
+                st.json(preview)
+                if st.button("Guardar datos del archivo", type="primary", key="btn_guardar_excel"):
+                    guardar_foto_dia(datos_excel)
+                    st.cache_data.clear()
+                    st.success("Guardado correctamente")
+                    st.rerun()
             else:
-                st.warning("No se pudo leer el archivo. Mañana con el formato real lo ajustamos.")
+                st.warning("No se pudo leer el archivo. Verificá que es el Excel de BIP Sucursales.")
 
     # ── FORMULARIO MANUAL: Foto del Día ──
     fecha_cargar = st.date_input("¿Qué día estás cargando?", value=date.today(), key="fecha_foto_dia")

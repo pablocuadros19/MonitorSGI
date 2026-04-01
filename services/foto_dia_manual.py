@@ -10,6 +10,8 @@ Datos que trae la Foto del Día:
               Campañas (datos disponibles, llamados, gestionados)
 """
 import json
+import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import date, datetime
 
@@ -170,3 +172,147 @@ def enriquecer_indicadores_con_foto(indicadores: dict, mes: int = None, anio: in
     # Se puede agregar cuando se confirme qué campo usar
 
     return indicadores
+
+
+def leer_foto_dia_excel(archivo_bytes: bytes) -> dict | None:
+    """
+    Lee el Excel exportado de BIP Sucursales (Foto del Día).
+    Formato conocido: una hoja con secciones Turnos, Oportunidades, Llamados.
+
+    Retorna un dict compatible con guardar_foto_dia(), o None si falla.
+    """
+    NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+    def _int(val):
+        try:
+            return int(float(val)) if val is not None else 0
+        except (ValueError, TypeError):
+            return 0
+
+    try:
+        import io
+        zf = zipfile.ZipFile(io.BytesIO(archivo_bytes))
+        # Buscar la hoja (puede llamarse sheet.xml o sheet1.xml)
+        hojas = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+        if not hojas:
+            return None
+        with zf.open(hojas[0]) as f:
+            tree = ET.parse(f)
+    except Exception:
+        return None
+
+    # Extraer todas las filas con valores
+    filas = []
+    for row in tree.findall(f".//{NS}row"):
+        vals = []
+        for c in row.findall(f"{NS}c"):
+            v = c.find(f"{NS}v")
+            is_elem = c.find(f"{NS}is")
+            if is_elem is not None:
+                t_elem = is_elem.find(f"{NS}t")
+                vals.append(t_elem.text if t_elem is not None else None)
+            elif v is not None:
+                vals.append(v.text)
+            else:
+                vals.append(None)
+        if any(v is not None for v in vals):
+            filas.append(vals)
+
+    # Aplanar a dict por etiqueta para búsqueda fácil
+    # Estrategia: recorrer fila a fila buscando labels conocidos
+    datos = {}
+    fecha_str = str(date.today())
+
+    for i, fila in enumerate(filas):
+        etiquetas = [str(v).strip() if v else "" for v in fila]
+
+        # Fecha
+        if i == 1 and fila[0]:
+            try:
+                from datetime import datetime as dt
+                fecha_raw = str(fila[0])
+                for fmt in ("%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%Y-%m-%d"):
+                    try:
+                        fecha_str = dt.strptime(fecha_raw[:len(fmt)], fmt).strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        continue
+            except Exception:
+                pass
+
+        # Scoring (fila con "total de scoring" y "total de turnos")
+        if any("total de scoring" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            datos["scoring_solicitados"] = _int(siguiente[0] if siguiente else None)
+            datos["scoring_turnos"] = _int(siguiente[1] if len(siguiente) > 1 else None)
+            datos["scoring_ventas"] = _int(siguiente[2] if len(siguiente) > 2 else None)
+
+        if any("no venta" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            datos["scoring_no_ventas"] = _int(siguiente[0] if siguiente else None)
+            datos["scoring_pendientes"] = _int(siguiente[1] if len(siguiente) > 1 else None)
+            datos["derivaciones_tesoreria"] = _int(siguiente[2] if len(siguiente) > 2 else None)
+
+        # Migas
+        if any("migas" in e.lower() and "ingresos" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            idx_ing = next((j for j, e in enumerate(etiquetas) if "migas" in e.lower() and "ingresos" in e.lower()), None)
+            idx_lla = next((j for j, e in enumerate(etiquetas) if "migas" in e.lower() and "llamados" in e.lower()), None)
+            if idx_ing is not None and siguiente:
+                datos["migas_ingresos"] = _int(siguiente[idx_ing] if idx_ing < len(siguiente) else None)
+            if idx_lla is not None and siguiente:
+                datos["migas_llamados"] = _int(siguiente[idx_lla] if idx_lla < len(siguiente) else None)
+
+        # Prospecto Digital
+        if any("prosp" in e.lower() and "ingresos" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            idx_ing = next((j for j, e in enumerate(etiquetas) if "prosp" in e.lower() and "ingresos" in e.lower()), None)
+            idx_lla = next((j for j, e in enumerate(etiquetas) if "prosp" in e.lower() and "llamados" in e.lower()), None)
+            if idx_ing is not None and siguiente:
+                datos["prospecto_ingresos"] = _int(siguiente[idx_ing] if idx_ing < len(siguiente) else None)
+            if idx_lla is not None and siguiente:
+                datos["prospecto_llamados"] = _int(siguiente[idx_lla] if idx_lla < len(siguiente) else None)
+
+        # Turno Previo
+        if any("turno previo" in e.lower() and "ingresos" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            idx_ing = next((j for j, e in enumerate(etiquetas) if "turno previo" in e.lower() and "ingresos" in e.lower()), None)
+            idx_lla = next((j for j, e in enumerate(etiquetas) if "turno previo" in e.lower() and "llamados" in e.lower()), None)
+            if idx_ing is not None and siguiente:
+                datos["turno_previo_ingresos"] = _int(siguiente[idx_ing] if idx_ing < len(siguiente) else None)
+            if idx_lla is not None and siguiente:
+                datos["turno_previo_llamados"] = _int(siguiente[idx_lla] if idx_lla < len(siguiente) else None)
+
+        # Campañas
+        if any("campan" in e.lower() and "disponible" in e.lower() for e in etiquetas):
+            siguiente = filas[i + 1] if i + 1 < len(filas) else []
+            idx_disp = next((j for j, e in enumerate(etiquetas) if "campan" in e.lower() and "disponible" in e.lower()), None)
+            idx_lla = next((j for j, e in enumerate(etiquetas) if "campan" in e.lower() and "llamados" in e.lower()), None)
+            if idx_disp is not None and siguiente:
+                datos["campanas_disponibles"] = _int(siguiente[idx_disp] if idx_disp < len(siguiente) else None)
+            if idx_lla is not None and siguiente:
+                datos["campanas_llamados"] = _int(siguiente[idx_lla] if idx_lla < len(siguiente) else None)
+
+    if not datos:
+        return None
+
+    datos["fecha"] = fecha_str
+    datos.setdefault("scoring_solicitados", 0)
+    datos.setdefault("scoring_turnos", 0)
+    datos.setdefault("scoring_ventas", 0)
+    datos.setdefault("scoring_no_ventas", 0)
+    datos.setdefault("scoring_pendientes", 0)
+    datos.setdefault("prospecto_ingresos", 0)
+    datos.setdefault("prospecto_llamados", 0)
+    datos.setdefault("prospecto_gestionados", 0)
+    datos.setdefault("turno_previo_ingresos", 0)
+    datos.setdefault("turno_previo_llamados", 0)
+    datos.setdefault("turno_previo_gestionados", 0)
+    datos.setdefault("campanas_disponibles", 0)
+    datos.setdefault("campanas_llamados", 0)
+    datos.setdefault("campanas_gestionados", 0)
+    datos.setdefault("migas_ingresos", 0)
+    datos.setdefault("migas_llamados", 0)
+    datos.setdefault("derivaciones_tesoreria", 0)
+    datos.setdefault("observaciones", "")
+    return datos
